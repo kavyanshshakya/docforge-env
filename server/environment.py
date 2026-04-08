@@ -10,10 +10,16 @@ Key features:
 from __future__ import annotations
 import random
 from typing import Any, Dict, Tuple
-from models import DataExtractAction, DataExtractObservation, DataExtractState
-from grader import grade
-from corruption import corrupt_document
-from tasks import TASKS
+try:
+    from server.models import DataExtractAction, DataExtractObservation, DataExtractState
+    from server.grader import grade
+    from server.corruption import corrupt_document
+    from server.tasks import TASKS
+except ImportError:
+    from models import DataExtractAction, DataExtractObservation, DataExtractState
+    from grader import grade
+    from corruption import corrupt_document
+    from tasks import TASKS
 
 
 class DataExtractEnvironment:
