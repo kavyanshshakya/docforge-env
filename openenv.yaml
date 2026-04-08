@@ -1,0 +1,36 @@
+spec_version: 1
+name: docforge_env
+type: environment
+description: >
+  DocForge — A document understanding benchmark with a corruption engine.
+  AI agents extract structured JSON from 5 categories of real-world documents
+  (contacts, support tickets, job postings, receipts, invoices) corrupted with
+  realistic noise: OCR artifacts, redacted spans, formatting damage, contradictory
+  fields. 17 tasks across 3 difficulty tiers. Field-level P/R/F1 grading with
+  Jaccard + Levenshtein dual scoring.
+runtime:
+  type: docker
+  dockerfile: server/Dockerfile
+app:
+  port: 7860
+tasks:
+  - id: contact_extraction
+    name: Contact Extraction (Easy)
+    difficulty: easy
+    description: Extract 6 fields from informal contact descriptions. No corruption.
+  - id: ticket_extraction
+    name: Support Ticket Extraction (Easy)
+    difficulty: easy
+    description: Extract 10 fields from customer support tickets including issue categorization.
+  - id: job_posting_extraction
+    name: Job Posting Extraction (Medium)
+    difficulty: medium
+    description: Extract 12 fields from job listings with light OCR noise and formatting artifacts.
+  - id: receipt_extraction
+    name: Receipt Extraction (Medium)
+    difficulty: medium
+    description: Extract 13 fields including line items from retail/restaurant receipts with OCR noise.
+  - id: invoice_extraction
+    name: Invoice/PO Extraction (Hard)
+    difficulty: hard
+    description: Extract 15+ fields with nested line items from invoices with heavy OCR, redactions, contradictions.
