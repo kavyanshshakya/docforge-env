@@ -10,7 +10,7 @@ description: >
   Jaccard + Levenshtein dual scoring.
 runtime:
   type: docker
-  dockerfile: server/Dockerfile
+  dockerfile: Dockerfile
 app:
   port: 7860
 tasks:
