@@ -3,15 +3,21 @@ DocForge — FastAPI server for the document extraction environment.
 Exposes HTTP + WebSocket endpoints compatible with the OpenEnv protocol.
 """
 from __future__ import annotations
+import uvicorn
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from environment import DataExtractEnvironment
-from models import DataExtractAction
-from tasks import TASKS
+try:
+    from server.environment import DataExtractEnvironment
+    from server.models import DataExtractAction
+    from server.tasks import TASKS
+except ImportError:
+    from environment import DataExtractEnvironment
+    from models import DataExtractAction
+    from tasks import TASKS
 
 app = FastAPI(
     title="DocForge Environment",
@@ -139,3 +145,10 @@ async def ws_endpoint(ws: WebSocket):
                 await ws.send_json({"error": f"Unknown action: {act}"})
     except WebSocketDisconnect:
         pass
+
+def main():
+    """Entry point for multi-mode deployment."""
+    uvicorn.run(app, host="0.0.0.0", port=7860)
+
+if __name__ == "__main__":
+    main()
