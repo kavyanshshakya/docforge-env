@@ -89,7 +89,7 @@ def call_model(client, raw_text, schema, feedback=""):
 
 def run_task(client, task_id):
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
-    rewards, steps, best_score = [], 0, 0.0
+    rewards, steps, best_score = [], 0, 0.001
 
     try:
         resp = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id}, timeout=30)
