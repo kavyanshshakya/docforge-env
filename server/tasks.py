@@ -5,6 +5,7 @@ TASKS = [
     {
         "task_id": "contact_01",
         "difficulty": "easy",
+        "task_type": "basic",
         "raw_text": (
             "Hey! Just met Sarah Chen at the ML meetup. She works as a Senior Data Scientist "
             "at Meridian Analytics. Her email is s.chen@meridian-analytics.com and she said "
@@ -680,3 +681,18 @@ TASKS = [
         },
     },
 ]
+
+# Import extended tasks (9 advanced capabilities)
+try:
+    from server.extended_tasks import EXTENDED_TASKS
+except ImportError:
+    from extended_tasks import EXTENDED_TASKS
+TASKS.extend(EXTENDED_TASKS)
+
+
+# Add task_type to base tasks
+for _t in TASKS:
+    if 'task_type' not in _t:
+        _t['task_type'] = 'basic'
+
+ALL_TASKS = TASKS
