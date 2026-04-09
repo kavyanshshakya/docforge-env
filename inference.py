@@ -116,7 +116,7 @@ def run_task(client, task_id):
     except Exception as e:
         print(f"[DEBUG] Error in task {task_id}: {e}", flush=True)
 
-    score = min(max(best_score, 0.0), 1.0)
+    score = min(max(best_score, 0.001), 0.999)
     log_end(success=score >= 0.5, steps=steps, score=score, rewards=rewards)
     return score
 
