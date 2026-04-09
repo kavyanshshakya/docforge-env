@@ -1,76 +1,59 @@
 # DocForge — Document Understanding Benchmark with Corruption Engine
 
-An OpenEnv environment that benchmarks AI agents on structured data extraction from **realistically corrupted documents**. DocForge applies a configurable corruption engine with both global noise (OCR artifacts, redacted spans, formatting damage) and **targeted field corruption** (digit swaps in phone numbers, OCR on email addresses, amount perturbation) that simulates real-world document degradation.
-
-## Why DocForge?
-
-Structured data extraction is a multi-billion dollar industry problem. Every company that processes invoices, resumes, contracts, or support tickets needs to convert unstructured documents into structured records. But real documents aren't clean — they come from scanned PDFs with OCR errors, degraded faxes, inconsistent formatting, and missing sections. Existing extraction benchmarks use clean text. DocForge closes that gap.
+An OpenEnv environment that benchmarks AI agents on structured data extraction from realistically corrupted documents. 31 tasks across 9 capabilities with a corruption engine, specialized grading modes, and seed-reproducible noise.
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                   DocForge Environment                    │
-│                                                           │
-│  ┌──────────┐   ┌───────────────────────┐                │
-│  │ Task Bank │──▶│   Corruption Engine    │──▶ Agent sees │
-│  │ (17 tasks │   │                       │   corrupted   │
-│  │  5 types) │   │  Global:              │   text        │
-│  └──────────┘   │   • OCR char swaps    │                │
-│                  │   • Whitespace damage  │                │
-│                  │   • Line break damage  │                │
-│                  │   • Redacted spans     │                │
-│                  │   • Contradictions     │                │
-│                  │  Targeted:             │                │
-│                  │   • Phone digit swap   │                │
-│                  │   • Email OCR damage   │                │
-│                  │   • Amount perturbation│                │
-│                  │                       │                │
-│                  │  Seed-reproducible     │                │
-│                  └───────────────────────┘                │
-│                                                           │
-│  Agent JSON ──▶ ┌─────────────────────┐                  │
-│                 │  Grader              │                  │
-│  Feedback   ◀──│  • Jaccard overlap   │                  │
-│  + reward      │  • Levenshtein dist  │                  │
-│                 │  • P / R / F1        │                  │
-│                 │  • Nested obj match  │                  │
-│                 └─────────────────────┘                  │
-│                                                           │
-│  5 attempts per episode with per-field feedback           │
-│  Improvement-based reward shaping                         │
-└──────────────────────────────────────────────────────────┘
+                        ┌──────────────────────────┐
+  Task Bank (31 tasks) ─┤   Corruption Engine      ├─▶ Agent sees corrupted text
+  9 capabilities        │  OCR · Redaction · Phone │
+                        │  Email · Amount · Seeded │
+                        └──────────────────────────┘
+                                    │
+  Agent submits JSON ──▶ ┌───────────────────────┐
+                         │  Grader (4 modes)     │
+  Feedback + reward  ◀── │  basic · confidence   │
+                         │  schema_free · pii    │
+                         │  P / R / F1 per field │
+                         └───────────────────────┘
 ```
+
+## 9 Capabilities
+
+| # | Capability | Tasks | What it tests |
+|---|-----------|-------|---------------|
+| 1 | Basic Extraction | 17 | Contacts, tickets, jobs, receipts, invoices |
+| 2 | Multilingual | 3 | German invoices, Japanese receipts, Spanish job postings |
+| 3 | Cross-Doc Reconciliation | 2 | Compare PO vs Invoice, flag discrepancies |
+| 4 | Confidence Calibration | 1 | Extract + rate certainty per field |
+| 5 | Schema-Free Discovery | 1 | No schema provided, agent discovers fields |
+| 6 | Temporal Reasoning | 2 | Compute deadlines, rent increases, vesting dates |
+| 7 | Adversarial | 2 | Misleading context, voided documents |
+| 8 | Table Reconstruction | 1 | Mangled text-serialized tables |
+| 9 | PII Detection | 1 | Extract + flag HIPAA/GDPR sensitive fields |
+| 10 | Hierarchical Parsing | 1 | Email containing forwarded invoice |
 
 ## Corruption Engine
 
-| Tier | OCR Noise | Whitespace | Line Breaks | Redactions | Contradictions | Targeted Fields |
-|------|-----------|------------|-------------|------------|----------------|-----------------|
-| Easy | — | — | — | — | — | — |
-| Medium | 2% | 2% | — | — | — | 30% phone |
-| Hard | 4% | 3% | 3% | 40% | 30% | 50% phone, 30% email, 40% amounts |
+Realistic document noise that scales with difficulty. Seed-reproducible.
 
-All corruption is **seed-reproducible** for consistent evaluation. Same `seed` parameter = identical corrupted output.
+| Tier | Global | Targeted |
+|------|--------|----------|
+| Easy | None | None |
+| Medium | 2% OCR, 2% whitespace | 30% phone digit swap |
+| Hard | 4% OCR, 3% whitespace, 3% line breaks, 40% redaction, 30% contradictions | 50% phone, 30% email, 40% amounts |
 
-## Document Types & Tasks (17 total)
+## Grading
 
-| Category | Difficulty | Tasks | Fields | Schema Complexity |
-|----------|-----------|-------|--------|-------------------|
-| Contact Cards | Easy | 4 | 6 | Flat strings |
-| Support Tickets | Easy | 2 | 10 | Strings + categorization |
-| Job Postings | Medium | 4 | 12 | Strings + lists |
-| Receipts | Medium | 3 | 13 | Strings + nested line items |
-| Invoices/POs | Hard | 4 | 15+ | Nested line items + multi-currency |
+4 specialized grading modes dispatched by task type:
 
-## Reward Function
+- **basic**: Jaccard + Levenshtein dual scoring, P/R/F1, nested object alignment
+- **confidence**: 60% value accuracy + 40% calibration score
+- **schema_free**: Fuzzy key matching (agent invents field names)
+- **pii**: 60% extraction + 40% PII detection F1
 
-- **Improvement-based**: `reward = max(0, current_score - previous_best)`
-- **Validity bonus**: +0.01 for valid JSON on first attempt
-- **String scoring**: `max(Jaccard, Levenshtein)` — robust to both token-level and character-level noise
-- **Numeric scoring**: Proportional error tolerance
-- **List scoring**: Fuzzy set overlap with best-match per element
-- **Nested objects**: Greedy alignment for line items across all sub-fields
-- **Metrics**: Per-field Precision, Recall, F1 in every feedback message
+All modes: 5 iterative attempts with per-field feedback. Improvement-based reward shaping.
 
 ## API
 
@@ -78,33 +61,26 @@ All corruption is **seed-reproducible** for consistent evaluation. Same `seed` p
 |----------|--------|-------------|
 | `/` | GET | Interactive dashboard |
 | `/health` | GET | Health check |
-| `/tasks` | GET | List all tasks with metadata |
-| `/metrics` | GET | Aggregate performance stats (by task, by difficulty) |
-| `/reset` | POST | Reset episode (`task_id`, `difficulty`, `seed`) |
-| `/step` | POST | Submit extraction (`extracted_json`) |
+| `/tasks` | GET | List all 31 tasks |
+| `/metrics` | GET | Aggregate performance stats |
+| `/reset` | POST | Reset episode (task_id, difficulty, seed) |
+| `/step` | POST | Submit extraction (extracted_json) |
 | `/state` | GET | Current episode state |
 | `/ws` | WS | WebSocket for OpenEnv protocol |
 
 ## Quick Start
 
 ```bash
-# Docker (Hugging Face Spaces)
-cd server && docker build -t docforge . && docker run -p 7860:7860 docforge
-
-# Local
 cd server && pip install -r requirements.txt && uvicorn app:app --port 7860
+```
 
-# Run baseline inference
+```bash
 export HF_TOKEN=your_token
 export ENV_URL=http://localhost:7860
 python inference.py
 ```
 
-## Baseline Performance (Qwen2.5-72B-Instruct)
+## Links
 
-| Difficulty | Tasks | Avg Score |
-|-----------|-------|-----------|
-| Easy | 6 | ~0.95 |
-| Medium | 7 | ~0.70 |
-| Hard | 4 | ~0.50 |
-| **Overall** | **17** | **~0.72** |
+- Space: https://huggingface.co/spaces/kavyanshshakya/docforge-env
+- GitHub: https://github.com/kavyanshshakya/docforge-env
