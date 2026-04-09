@@ -2,12 +2,13 @@ spec_version: 1
 name: docforge_env
 type: environment
 description: >
-  DocForge — A document understanding benchmark with a corruption engine.
-  AI agents extract structured JSON from 5 categories of real-world documents
-  (contacts, support tickets, job postings, receipts, invoices) corrupted with
-  realistic noise: OCR artifacts, redacted spans, formatting damage, contradictory
-  fields. 17 tasks across 3 difficulty tiers. Field-level P/R/F1 grading with
-  Jaccard + Levenshtein dual scoring.
+  DocForge — A document understanding benchmark with 9 advanced capabilities.
+  31 tasks across 5 difficulty tiers and 9 document processing challenges:
+  basic extraction, multilingual, cross-document reconciliation, confidence
+  calibration, schema-free discovery, temporal reasoning, adversarial documents,
+  table reconstruction, PII detection, and hierarchical document parsing.
+  Includes a corruption engine with OCR artifacts, redactions, and targeted
+  field damage. Field-level P/R/F1 grading with Jaccard + Levenshtein scoring.
 runtime:
   type: docker
   dockerfile: Dockerfile
@@ -17,20 +18,56 @@ tasks:
   - id: contact_extraction
     name: Contact Extraction (Easy)
     difficulty: easy
-    description: Extract 6 fields from informal contact descriptions. No corruption.
+    description: Extract 6 fields from informal contact descriptions.
   - id: ticket_extraction
     name: Support Ticket Extraction (Easy)
     difficulty: easy
-    description: Extract 10 fields from customer support tickets including issue categorization.
+    description: Extract 10 fields from customer support tickets.
   - id: job_posting_extraction
     name: Job Posting Extraction (Medium)
     difficulty: medium
-    description: Extract 12 fields from job listings with light OCR noise and formatting artifacts.
+    description: Extract 12 fields from job listings with OCR noise.
   - id: receipt_extraction
     name: Receipt Extraction (Medium)
     difficulty: medium
-    description: Extract 13 fields including line items from retail/restaurant receipts with OCR noise.
+    description: Extract 13 fields from retail/restaurant receipts.
   - id: invoice_extraction
     name: Invoice/PO Extraction (Hard)
     difficulty: hard
-    description: Extract 15+ fields with nested line items from invoices with heavy OCR, redactions, contradictions.
+    description: Extract 15+ fields with nested line items from invoices.
+  - id: multilingual_extraction
+    name: Multilingual Extraction (Medium-Hard)
+    difficulty: medium
+    description: Extract from German, Japanese, and Spanish documents.
+  - id: cross_document_reconciliation
+    name: Cross-Document Reconciliation (Hard)
+    difficulty: hard
+    description: Compare PO vs Invoice or Contract vs Invoice and flag discrepancies.
+  - id: confidence_calibration
+    name: Confidence Calibration (Medium)
+    difficulty: medium
+    description: Extract fields with calibrated confidence scores for ambiguous documents.
+  - id: schema_free_discovery
+    name: Schema-Free Discovery (Hard)
+    difficulty: hard
+    description: Extract ALL fields with no schema provided.
+  - id: temporal_reasoning
+    name: Temporal Reasoning (Hard)
+    difficulty: hard
+    description: Extract and compute dates, deadlines, and durations from contracts.
+  - id: adversarial_extraction
+    name: Adversarial Extraction (Hard)
+    difficulty: hard
+    description: Extract from documents with misleading context and voided sections.
+  - id: table_reconstruction
+    name: Table Reconstruction (Hard)
+    difficulty: hard
+    description: Reconstruct structured tables from mangled text-serialized data.
+  - id: pii_detection
+    name: PII Detection (Medium)
+    difficulty: medium
+    description: Extract fields and flag personally identifiable information.
+  - id: hierarchical_parsing
+    name: Hierarchical Document Parsing (Hard)
+    difficulty: hard
+    description: Parse nested documents (email containing forwarded invoice).
