@@ -1,6 +1,16 @@
 """
-Inference script for DataExtract environment.
-Runs baseline evaluation across all tasks (easy/medium/hard).
+Inference script for DocForge environment.
+Runs baseline evaluation across all 31 tasks including:
+- Original extraction (contacts, tickets, jobs, receipts, invoices)
+- Multilingual (German, Japanese, Spanish)
+- Cross-document reconciliation
+- Temporal reasoning
+- Adversarial documents
+- Table reconstruction
+- Schema-free discovery
+- PII detection
+- Hierarchical documents
++ Confidence calibration on all tasks
 """
 import json
 import os
@@ -22,33 +32,65 @@ BENCHMARK = "docforge"
 MAX_STEPS = 3
 
 TASK_IDS = [
+    # Original extraction
     "contact_01", "contact_02", "contact_03", "contact_04",
     "ticket_01", "ticket_02",
     "job_01", "job_02", "job_03", "job_04",
     "receipt_01", "receipt_02", "receipt_03",
     "invoice_01", "invoice_02", "invoice_03", "invoice_04",
+    # Multilingual
+    "multi_de_01", "multi_ja_01", "multi_es_01",
+    # Cross-document reconciliation
+    "crossdoc_01", "crossdoc_02",
+    # Temporal reasoning
+    "temporal_01", "temporal_02",
+    # Adversarial
+    "adversarial_01", "adversarial_02",
+    # Table reconstruction
+    "table_01",
+    # Confidence calibration
+    "confidence_01",
+    # Schema-free discovery
+    "schemafree_01",
+    # PII detection
+    "pii_01",
+    # Hierarchical documents
+    "hierarchical_01",
 ]
 
 SYSTEM_PROMPT = textwrap.dedent("""
 You are a structured data extraction agent. Given unstructured text and a target schema,
-output ONLY a valid JSON object with the requested fields. No explanation, no markdown.
+output ONLY valid JSON. No explanation, no markdown.
 
 Rules:
 - Output raw JSON only. Never wrap in ```json blocks or add commentary.
 - Match field names exactly as specified in the schema.
 - For lists of strings, use JSON arrays: ["item1", "item2"]
 - For lists of objects (like line_items), use: [{"field": "value"}, ...]
-- For null/unknown values, use null (not "null", not "N/A", not "").
+- For null/unknown values, use null.
 - Numbers must be numeric types, not strings. 140000 not "140,000".
+- Booleans must be true/false, not strings.
 - Copy proper nouns, emails, phone numbers exactly from the text.
-- For line items: quantity=1 for flat fees/lump sums; unit_price=total for single items.
+- For line items: quantity=1 for flat fees/lump sums.
+- For cross-document tasks: carefully compare both documents and flag discrepancies.
+- For temporal tasks: compute dates mathematically from the given rules.
+- For adversarial tasks: identify which information is correct vs misleading.
+- For schema-free tasks: discover all meaningful fields yourself.
+- For PII tasks: identify all personally identifiable information fields.
+- For hierarchical tasks: extract from the correct nesting level.
+- For multilingual tasks: extract values in the original language unless translating is needed for field names.
+""").strip()
 
-Example input:
-  TEXT: "Invoice #A-99, from Acme Corp, 1 Widget @ $5 = $5, Tax 10%: $0.50, Total: $5.50"
-  SCHEMA: "Extract: invoice_number, vendor_name, line_items (description, quantity, unit_price, total), subtotal, tax_rate, tax_amount, total_due"
+CONFIDENCE_PROMPT = textwrap.dedent("""
+Additionally, output a second JSON object on a new line with your confidence for each field.
+Format: {"field_name": 0.0-1.0, ...}
+1.0 = completely certain, 0.0 = pure guess.
+Be honest. Low confidence on uncertain fields is rewarded.
+High confidence on wrong answers is penalized.
 
-Example output:
-  {"invoice_number":"A-99","vendor_name":"Acme Corp","line_items":[{"description":"Widget","quantity":1,"unit_price":5.0,"total":5.0}],"subtotal":5.0,"tax_rate":10.0,"tax_amount":0.5,"total_due":5.5}
+Output format (two lines):
+LINE 1: {extraction JSON}
+LINE 2: {confidence JSON}
 """).strip()
 
 
@@ -67,7 +109,8 @@ def log_end(success, steps, score, rewards):
 def call_model(client, raw_text, schema, feedback=""):
     user_msg = f"TEXT:\n{raw_text}\n\nSCHEMA:\n{schema}"
     if feedback:
-        user_msg += f"\n\nFEEDBACK FROM PREVIOUS ATTEMPT:\n{feedback}\n\nFix the issues above and output the corrected JSON."
+        user_msg += f"\n\nFEEDBACK FROM PREVIOUS ATTEMPT:\n{feedback}\nFix the issues and output corrected JSON."
+    user_msg += f"\n\n{CONFIDENCE_PROMPT}"
 
     resp = client.chat.completions.create(
         model=MODEL_NAME,
@@ -76,20 +119,34 @@ def call_model(client, raw_text, schema, feedback=""):
             {"role": "user", "content": user_msg},
         ],
         temperature=0.0,
-        max_tokens=2000,
+        max_tokens=3000,
     )
     text = (resp.choices[0].message.content or "").strip()
-    # Strip markdown fences if model adds them
+    # Strip markdown fences
     if text.startswith("```"):
         text = text.split("\n", 1)[-1]
     if text.endswith("```"):
         text = text.rsplit("```", 1)[0]
-    return text.strip()
+    text = text.strip()
+
+    # Parse two-line output: extraction + confidence
+    lines = text.split("\n")
+    extraction = lines[0].strip() if lines else "{}"
+    confidence = None
+    if len(lines) > 1:
+        # Find the second JSON object
+        for line in lines[1:]:
+            line = line.strip()
+            if line.startswith("{"):
+                confidence = line
+                break
+
+    return extraction, confidence
 
 
 def run_task(client, task_id):
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
-    rewards, steps, best_score = [], 0, 0.001
+    rewards, steps, best_score = [], 0, 0.00101
 
     try:
         resp = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id}, timeout=30)
@@ -98,15 +155,20 @@ def run_task(client, task_id):
         feedback = ""
 
         for step in range(1, MAX_STEPS + 1):
-            extraction = call_model(client, obs["raw_text"], obs["schema_description"], feedback)
-            resp = requests.post(f"{ENV_URL}/step", json={"extracted_json": extraction}, timeout=30)
+            extraction, confidence = call_model(client, obs["raw_text"], obs["schema_description"], feedback)
+
+            step_body = {"extracted_json": extraction}
+            if confidence:
+                step_body["confidence_json"] = confidence
+
+            resp = requests.post(f"{ENV_URL}/step", json=step_body, timeout=30)
             data = resp.json()
             obs = data["observation"]
             reward, done = data["reward"], data["done"]
 
             rewards.append(reward)
             steps = step
-            best_score = obs["score"]
+            best_score = max(best_score, obs["score"])
             feedback = obs["feedback"]
 
             log_step(step=step, action=f"extract({task_id})", reward=reward, done=done, error=None)
@@ -132,11 +194,20 @@ def main():
             scores.append(0.001)
 
     avg = sum(scores) / len(scores) if scores else 0.0
-    easy = [s for s, t in zip(scores, TASK_IDS) if t.startswith("contact") or t.startswith("ticket")]
-    med = [s for s, t in zip(scores, TASK_IDS) if t.startswith("job") or t.startswith("receipt")]
-    hard = [s for s, t in zip(scores, TASK_IDS) if t.startswith("invoice")]
 
-    print(f"\n[SUMMARY] Overall: {avg:.3f} | Easy: {sum(easy)/max(len(easy),1):.3f} | Medium: {sum(med)/max(len(med),1):.3f} | Hard: {sum(hard)/max(len(hard),1):.3f}", flush=True)
+    # Category breakdown
+    categories = {
+        "Easy": [s for s, t in zip(scores, TASK_IDS) if t.startswith("contact") or t.startswith("ticket")],
+        "Medium": [s for s, t in zip(scores, TASK_IDS) if t.startswith("job") or t.startswith("receipt") or t.startswith("multi")],
+        "Hard": [s for s, t in zip(scores, TASK_IDS) if any(t.startswith(p) for p in ["invoice", "crossdoc", "temporal", "adversarial", "table", "schemafree", "pii", "hierarchical"])],
+    }
+
+    parts = [f"Overall: {avg:.3f}"]
+    for cat, cat_scores in categories.items():
+        if cat_scores:
+            parts.append(f"{cat}: {sum(cat_scores)/len(cat_scores):.3f}")
+
+    print(f"\n[SUMMARY] {' | '.join(parts)}", flush=True)
 
 
 if __name__ == "__main__":
