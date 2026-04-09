@@ -129,7 +129,7 @@ def main():
             scores.append(run_task(client, task_id))
         except Exception as e:
             print(f"[DEBUG] Task {task_id} failed: {e}", flush=True)
-            scores.append(0.0)
+            scores.append(0.001)
 
     avg = sum(scores) / len(scores) if scores else 0.0
     easy = [s for s, t in zip(scores, TASK_IDS) if t.startswith("contact") or t.startswith("ticket")]
